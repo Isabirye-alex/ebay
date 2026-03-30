@@ -102,7 +102,7 @@ class DatasetCleaner:
     def _clean_title(self):
         """Drop rows with missing 'title'."""
         before = len(self.df)
-        self.df['title'] = self.df['title'].str.strip().str.lower()
+        self.df['title'] = self.df['title'].str.strip().str.lower().astype(str)
         self.df = self.df.dropna(subset=["title"])
         after = len(self.df)
         self.quality_metrics["title_rows_removed"] = before - after
@@ -133,8 +133,8 @@ class DatasetCleaner:
     def _clean_condition(self):
         """Drop rows with missing 'condition'."""
         before = len(self.df)
-        # self.df = self.df.dropna(subset=["condition"])
         self.df["condition"] = self.df["condition"].fillna("unkown")
+        self.df['condition'] = self.df['condition'].str.strip().str.lower().astype(str)
         after = len(self.df)
         self.quality_metrics["condition_rows_removed"] = before - after
         self._log_step("condition_cleaning", before, after)
