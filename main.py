@@ -54,7 +54,7 @@ def run_pipeline(source_path: str):
 if __name__ == '__main__':
     try:
         pipeline_results = run_pipeline(file_path)
-        print(pipeline_results['cleaned_df'])
+        print(pipeline_results['cleaned_df'].info())
 
       
     except Exception as e:

@@ -3,6 +3,7 @@ from typing import Dict, Any, Callable, List
 from utils.timing import timeit
 from utils.logging import setup_logger
 from utils.validators import ReusableFunctions
+from utils.exceptions import PipelineError, DataValidationError, DataCleaningError, DataTypeError
 
 
 class DatasetCleaner:
@@ -94,99 +95,117 @@ class DatasetCleaner:
     def _clean_category(self):
         """Drop rows with missing 'category'."""
         before = len(self.df)
-        self.df = self.df.dropna(subset=["category"])
-        after = len(self.df)
-        self.quality_metrics["category_rows_removed"] = before - after
-        self._log_step("category_cleaning", before, after)
+        try:
+            self.df = self.df.dropna(subset=["category"])
+            after = len(self.df)
+            self.quality_metrics["category_rows_removed"] = before - after
+            self._log_step("category_cleaning", before, after)
+        except Exception as e:
+            raise DataCleaningError(f'Fatal error occurred with error reason {e}')
 
     def _clean_title(self):
         """Drop rows with missing 'title'."""
         before = len(self.df)
-        self.df['title'] = self.df['title'].str.strip().str.lower().astype(str)
-        self.df = self.df.dropna(subset=["title"])
-        after = len(self.df)
-        self.quality_metrics["title_rows_removed"] = before - after
-        self._log_step("title_cleaning", before, after)
+        try:
+            self.df['title'] = self.df['title'].str.strip().str.lower().astype(str)
+            self.df = self.df.dropna(subset=["title"])
+            after = len(self.df)
+            self.quality_metrics["title_rows_removed"] = before - after
+            self._log_step("title_cleaning", before, after)
+        except Exception as e:
+            raise DataCleaningError(f'Fatal error occurred with error reason {e}')
 
     def _clean_price(self):
         """Clean 'price' column: remove symbols, convert to float, drop invalid rows."""
         before = len(self.df)
+        try:
+            # Drop rows where price is missing
+            self.df = self.df.dropna(subset=["price"])
 
-        # Drop rows where price is missing
-        self.df = self.df.dropna(subset=["price"])
+            # Remove $ and commas, strip whitespace
+            self.df["price"] = (
+                self.df["price"].str.replace(r"[\$,]", "", regex=True).str.strip()
+            )
 
-        # Remove $ and commas, strip whitespace
-        self.df["price"] = (
-            self.df["price"].str.replace(r"[\$,]", "", regex=True).str.strip()
-        )
+            # Convert to numeric, coerce errors to NaN
+            self.df["price"] = pd.to_numeric(self.df["price"], errors="coerce")
 
-        # Convert to numeric, coerce errors to NaN
-        self.df["price"] = pd.to_numeric(self.df["price"], errors="coerce")
+            # Drop rows where conversion failed
+            self.df = self.df.dropna(subset=["price"])
 
-        # Drop rows where conversion failed
-        self.df = self.df.dropna(subset=["price"])
-
-        after = len(self.df)
-        self.quality_metrics["price_rows_removed"] = before - after
-        self._log_step("price_cleaning", before, after)
+            after = len(self.df)
+            self.quality_metrics["price_rows_removed"] = before - after
+            self._log_step("price_cleaning", before, after)
+        except Exception as e:
+            raise DataCleaningError(f'Fatal error occurred with error reason {e}')
 
     def _clean_condition(self):
         """Drop rows with missing 'condition'."""
         before = len(self.df)
-        self.df["condition"] = self.df["condition"].fillna("unkown")
-        self.df['condition'] = self.df['condition'].str.strip().str.lower().astype(str)
-        after = len(self.df)
-        self.quality_metrics["condition_rows_removed"] = before - after
-        self._log_step("condition_cleaning", before, after)
+        try:
+            self.df["condition"] = self.df["condition"].fillna("unkown")
+            self.df['condition'] = self.df['condition'].str.strip().str.lower().astype(str)
+            after = len(self.df)
+            self.quality_metrics["condition_rows_removed"] = before - after
+            self._log_step("condition_cleaning", before, after)
+        except Exception as e:
+             raise DataCleaningError(f'Fatal error occurred with error reason {e}')
 
     def _clean_date(self):
         """Convert 'sold_date' to datetime and drop invalid rows."""
         before = len(self.df)
-        self.df["sold_date"] = pd.to_datetime(self.df["sold_date"], errors="coerce")
-        self.df = self.df.dropna(subset=["sold_date"])
-        after = len(self.df)
-        self.quality_metrics["date_rows_removed"] = before - after
-        self._log_step("date_cleaning", before, after)
+        try:
+            self.df["sold_date"] = pd.to_datetime(self.df["sold_date"], errors="coerce")
+            self.df = self.df.dropna(subset=["sold_date"])
+            after = len(self.df)
+            self.quality_metrics["date_rows_removed"] = before - after
+            self._log_step("date_cleaning", before, after)
+        except Exception as e:
+            raise DataCleaningError(f'Fatal error occurred with error reason {e}')
 
     def _clean_shipping(self):
         """Clean 'shipping' column: remove symbols, convert to float, impute missing values."""
         before = len(self.df)
+        try:
+            # Remove $ and unwanted text
+            self.df["shipping"] = (
+                self.df["shipping"]
+                .str.replace(r"\$", "", regex=True)
+                .str.replace("delivery", "", regex=False)
+            )
 
-        # Remove $ and unwanted text
-        self.df["shipping"] = (
-            self.df["shipping"]
-            .str.replace(r"\$", "", regex=True)
-            .str.replace("delivery", "", regex=False)
-        )
+            # Convert to numeric
+            self.df["shipping"] = pd.to_numeric(self.df["shipping"], errors="coerce")
 
-        # Convert to numeric
-        self.df["shipping"] = pd.to_numeric(self.df["shipping"], errors="coerce")
+            # Track missing values before filling
+            missing = self.df["shipping"].isna().sum()
+            self.quality_metrics["shipping_missing_before_fill"] = missing
+            self.logger.info(
+                f"Missing rows in Shipping column before filling were {missing}"
+            )
 
-        # Track missing values before filling
-        missing = self.df["shipping"].isna().sum()
-        self.quality_metrics["shipping_missing_before_fill"] = missing
-        self.logger.info(
-            f"Missing rows in Shipping column before filling were {missing}"
-        )
+            # Fill missing shipping with mean
+            self.df["shipping"] = self.df["shipping"].fillna(0)
 
-        # Fill missing shipping with mean
-        self.df["shipping"] = self.df["shipping"].fillna(0)
-
-        after = len(self.df)
-        self._log_step("shipping_cleaning", before, after)
+            after = len(self.df)
+            self._log_step("shipping_cleaning", before, after)
+        except Exception as e:
+            raise DataCleaningError(f'Fatal error occurred with error reason {e}')
 
     def _clean_reviews_count(self):
         """Handle missing reviews_count intelligently."""
         before = len(self.df)
+        try:
+            # Flag missing values
+            self.df["reviews_count_missing"] = self.df["reviews_count"].isna().astype(int)
 
-        # Flag missing values
-        self.df["reviews_count_missing"] = self.df["reviews_count"].isna().astype(int)
+            # Fill missing as 0 (no reviews)
+            self.df["reviews_count"] = self.df["reviews_count"].fillna(0)
 
-        # Fill missing as 0 (no reviews)
-        self.df["reviews_count"] = self.df["reviews_count"].fillna(0)
-
-        after = len(self.df)
-        self._log_step("reviews_count_cleaning", before, after)
+            after = len(self.df)
+            self._log_step("reviews_count_cleaning", before, after)
+        except Exception as e:
+            raise DataCleaningError(f'Fatal error occurred with error reason {e}')
 
     def _clean_rating(self):
         """
@@ -195,83 +214,92 @@ class DatasetCleaner:
         Median is used over mean because eBay ratings are right-skewed.
         """
         before = len(self.df)
+        try:
+            self.df['rating_missing'] = self.df['rating'].isna().astype(int)
+            self.df['rating']         = self.df['rating'].fillna(self.df['rating'].median())
 
-        self.df['rating_missing'] = self.df['rating'].isna().astype(int)
-        self.df['rating']         = self.df['rating'].fillna(self.df['rating'].median())
-
-        after = len(self.df)
-        self._log_step("rating_cleaning", before, after)
+            after = len(self.df)
+            self._log_step("rating_cleaning", before, after)
+        except Exception as e:
+            raise DataCleaningError(f'Fatal error occurred with error reason {e}')
 
     def _clean_seller_feedback_count(self):
         """Handle missing 'seller_feedback_count' column."""
         before = len(self.df)
+        try:
+            self.df["seller_feedback_count"] = pd.to_numeric(
+                self.df["seller_feedback_count"], errors="coerce"
+            )
 
-        self.df["seller_feedback_count"] = pd.to_numeric(
-            self.df["seller_feedback_count"], errors="coerce"
-        )
+            self.df["seller_feedback_count_missing"] = (
+                self.df["seller_feedback_count"].isna().astype(int)
+            )
 
-        self.df["seller_feedback_count_missing"] = (
-            self.df["seller_feedback_count"].isna().astype(int)
-        )
-
-        self.df["seller_feedback_count"] = self.df["seller_feedback_count"].fillna(0)
-        after = len(self.df)  
-        self._log_step("seller_feedback_count_cleaning", before, after) 
+            self.df["seller_feedback_count"] = self.df["seller_feedback_count"].fillna(0)
+            after = len(self.df)  
+            self._log_step("seller_feedback_count_cleaning", before, after) 
+        except Exception as e:
+            raise DataCleaningError(f'Fatal error occurred while cleaning the seller feedback count column with error reason {e}')
 
 
     def _clean_seller_feedback_rating(self):
         """Clean categorical seller feedback rating."""
         before = len(self.df)
+        try:
+            # Normalize text (lowercase, strip spaces)
+            self.df['seller_feedback_rating'] = (
+                self.df['seller_feedback_rating']
+                .astype(str)
+                .str.lower()
+                .str.strip()
+            )
 
-        # Normalize text (lowercase, strip spaces)
-        self.df['seller_feedback_rating'] = (
-            self.df['seller_feedback_rating']
-            .astype(str)
-            .str.lower()
-            .str.strip()
-        )
+            # Flag missing
+            self.df['seller_feedback_rating_missing'] = (
+                self.df['seller_feedback_rating'].isna().astype(int)
+            )
 
-        # Flag missing
-        self.df['seller_feedback_rating_missing'] = (
-            self.df['seller_feedback_rating'].isna().astype(int)
-        )
+            # Fill missing with 'unknown'
+            self.df['seller_feedback_rating'] = self.df[
+                'seller_feedback_rating'
+            ].replace('nan', pd.NA).fillna('unknown')
 
-        # Fill missing with 'unknown'
-        self.df['seller_feedback_rating'] = self.df[
-            'seller_feedback_rating'
-        ].replace('nan', pd.NA).fillna('unknown')
-
-        after = len(self.df)
-        self._log_step("seller_feedback_rating_cleaning", before, after)
+            after = len(self.df)
+            self._log_step("seller_feedback_rating_cleaning", before, after)
+        except Exception as e:
+            raise DataCleaningError(f'Fatal error occurred while cleaning the seller feedback rating with error reason {e}')
 
     def _clean_seller_feedback_percentage(self):
         """Handle missing 'seller_feedback_percentage' column."""
         before = len(self.df)
+        try: 
+            self.df["seller_feedback_percentage"] = (
+                self.df["seller_feedback_percentage"]
+                .astype(str)
+                .str.replace("%", "", regex=False)
+            )
 
-        self.df["seller_feedback_percentage"] = (
-            self.df["seller_feedback_percentage"]
-            .astype(str)
-            .str.replace("%", "", regex=False)
-        )
+            self.df["seller_feedback_percentage"] = pd.to_numeric(
+                self.df["seller_feedback_percentage"], errors="coerce"
+            )
 
-        self.df["seller_feedback_percentage"] = pd.to_numeric(
-            self.df["seller_feedback_percentage"], errors="coerce"
-        )
+            self.df["seller_feedback_percentage_missing"] = (
+                self.df["seller_feedback_percentage"].isna().astype(int)
+            )
 
-        self.df["seller_feedback_percentage_missing"] = (
-            self.df["seller_feedback_percentage"].isna().astype(int)
-        )
+            self.df["seller_feedback_percentage"] = self.df[
+                "seller_feedback_percentage"
+            ].fillna(self.df["seller_feedback_percentage"].median())
 
-        self.df["seller_feedback_percentage"] = self.df[
-            "seller_feedback_percentage"
-        ].fillna(self.df["seller_feedback_percentage"].median())
-
-        after = len(self.df)
-        self._log_step("seller_feedback_percentage_cleaning", before, after)
+            after = len(self.df)
+            self._log_step("seller_feedback_percentage_cleaning", before, after)
+        except Exception as e: 
+            raise DataCleaningError(f'Fatal error occurred while cleaning seller feedback percentage column with error reason {e}')
 
 
     def _optimize_columns(self):
         cat_cols = ['category', 'condition', 'seller_feedback_rating', 'title']
+
         for c in cat_cols:
             self.df[c] = self.df[c].astype('category')
 
@@ -292,8 +320,15 @@ class DatasetCleaner:
         self.schema_validator
         # Execute each cleaning step
         for step in self.pipeline_steps:
-            step()
+            try:
+             step()
+            except PipelineError as e:
+                self.logger.error(f'Pipeline Failed with error reason {e}')
+                raise
 
+            except Exception as e:
+                self.logger.error('Unexpected error occurred with reason {e}')
+                raise
         self.logger.info("Pipeline completed successfully")
         self.logger.info(f"Final row count: {len(self.df)}")
         self.logger.info(f"Quality metrics: {self.quality_metrics}")
