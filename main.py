@@ -24,29 +24,38 @@ Notes:
 """
 from pipeline.ingest import DataIngestor
 import pandas as pd
+from pipeline.clean import DatasetCleaner
+from utils.timing import timeit
 pd.set_option('display.max_columns', None)
 
 file_path = 'ebay_merged_data.csv'
 connection_string = "postgresql://postgres:0009@localhost:5432/ds_db"
 
 
-
+@timeit
 def run_pipeline(source_path: str):
+
+    # Data ingestor injection and its metrics
     data_ingestor = DataIngestor(source_path)
     raw_df_dict = data_ingestor.fetch_raw_csv_data()
     raw_df = raw_df_dict['dataframe']
     metrics = raw_df_dict['quality_metrics']
+
+    # Data cleaning and its metrics
+    dc_results = DatasetCleaner(raw_df).run_pipeline()
+
     return {
         'raw_df': raw_df, 
-        'metrics': metrics
+        'metrics': metrics,
+        'cleaned_df': dc_results
         }
 
 
 if __name__ == '__main__':
     try:
         pipeline_results = run_pipeline(file_path)
-        print(pipeline_results['raw_df'].info())
-        print(pipeline_results['metrics'])
-        
+        print(pipeline_results['cleaned_df'])
+
+      
     except Exception as e:
         raise RuntimeError(f'Error Running Production Pipeline: {e}')

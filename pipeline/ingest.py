@@ -5,7 +5,7 @@ from utils.timing import timeit
 from utils.logging import setup_logger
 from utils.retry import retry
 from typing import Dict, Any, Callable
-from utils.helpers import validate_file_path 
+from utils.helpers import validate_file_path
 
 logger = setup_logger()
 
@@ -40,9 +40,9 @@ class DataIngestor:
             filepath (str): Path to the source CSV file
         """
         self.source_path = filepath
-        self.quality_metrics : Dict[str, Any] = {
-            'initial_rows': None,
-            'source_paht': self.source_path
+        self.quality_metrics: Dict[str, Any] = {
+            "initial_rows": None,
+            "source_path": self.source_path,
         }
 
     @timeit
@@ -64,16 +64,13 @@ class DataIngestor:
             dataframe = pd.read_csv(self.source_path)
             total_rows = len(dataframe)
             shape = dataframe.shape
-            self.quality_metrics['initial_rows'] = total_rows
-            self.quality_metrics['Dataset Shape'] = shape
+            self.quality_metrics["initial_rows"] = total_rows
+            self.quality_metrics["Dataset Shape"] = shape
             logger.info(f"Data successfully loaded from {self.source_path}")
-            logger.info(f'Loaded Dataset contains {total_rows} rows')
-            logger.info(f'Loaded dataset has a shape of {shape}')
+            logger.info(f"Loaded Dataset contains {total_rows} rows")
+            logger.info(f"Loaded dataset has a shape of {shape}")
 
-            return {
-                'dataframe': dataframe,
-                'quality_metrics': self.quality_metrics
-            }
+            return {"dataframe": dataframe, "quality_metrics": self.quality_metrics}
 
         except Exception as e:
             logger.error(f"Failed to load dataset: {e}")
