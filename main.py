@@ -25,31 +25,39 @@ Notes:
 from pipeline.ingest import DataIngestor
 import pandas as pd
 from pipeline.clean import DatasetCleaner
+from utils.exceptions import PipelineError
 from utils.timing import timeit
+from utils.logging import setup_logger
 pd.set_option('display.max_columns', None)
 
 file_path = 'ebay_merged_data.csv'
 connection_string = "postgresql://postgres:0009@localhost:5432/ds_db"
+logger = setup_logger()
 
 
 @timeit
 def run_pipeline(source_path: str):
-
+    try:
     # Data ingestor injection and its metrics
-    data_ingestor = DataIngestor(source_path)
-    raw_df_dict = data_ingestor.fetch_raw_csv_data()
-    raw_df = raw_df_dict['dataframe']
-    metrics = raw_df_dict['quality_metrics']
+        data_ingestor = DataIngestor(source_path)
+        raw_df_dict = data_ingestor.fetch_raw_csv_data()
+        raw_df = raw_df_dict['dataframe']
+        metrics = raw_df_dict['quality_metrics']
 
-    # Data cleaning and its metrics
-    dc_results = DatasetCleaner(raw_df).run_pipeline()
+        # Data cleaning and its metrics
+        dc_results = DatasetCleaner(raw_df).run_pipeline()
 
-    return {
-        'raw_df': raw_df, 
-        'metrics': metrics,
-        'cleaned_df': dc_results
-        }
-
+        return {
+            'raw_df': raw_df, 
+            'metrics': metrics,
+            'cleaned_df': dc_results
+            }
+    except PipelineError as e:
+        logger.error(f'Error running pipeline with reason{e}')
+        raise
+    except Exception as e:
+        logger.error(f'Fatal error running pipeline with error reason {e}')
+        raise
 
 if __name__ == '__main__':
     try:

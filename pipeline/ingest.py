@@ -1,5 +1,4 @@
 import pandas as pd
-import os
 from sqlalchemy import create_engine
 from utils.timing import timeit
 from utils.logging import setup_logger
