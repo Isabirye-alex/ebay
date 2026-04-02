@@ -59,7 +59,7 @@ class DatasetCleaner:
         self.schema_validator = ReusableFunctions().validate_schema(self.df, self.REQUIRED_COLUMNS, self.logger)
 
         # Ordered cleaning steps
-        self.pipeline_steps: List[Callable] = [
+        self.pipeline_steps: List[Callable[[], None]] = [
             self._clean_category,
             self._clean_title,
             self._clean_price,
@@ -143,7 +143,7 @@ class DatasetCleaner:
         """Drop rows with missing 'condition'."""
         before = len(self.df)
         try:
-            self.df["condition"] = self.df["condition"].fillna("unkown")
+            self.df["condition"] = self.df["condition"].fillna("unknown")
             self.df['condition'] = self.df['condition'].str.strip().str.lower().astype(str)
             after = len(self.df)
             self.quality_metrics["condition_rows_removed"] = before - after
@@ -155,7 +155,7 @@ class DatasetCleaner:
         """Convert 'sold_date' to datetime and drop invalid rows."""
         before = len(self.df)
         try:
-            self.df["sold_date"] = pd.to_datetime(self.df["sold_date"], errors="coerce")
+            self.df["sold_date"] = pd.to_datetime(self.df["sold_date"],errors="raise", dayfirst=True)
             self.df = self.df.dropna(subset=["sold_date"])
             after = len(self.df)
             self.quality_metrics["date_rows_removed"] = before - after
@@ -316,8 +316,10 @@ class DatasetCleaner:
             pd.DataFrame: The fully cleaned dataset
         """
         self.logger.info("Starting data cleaning pipeline")
+
         # Validate the dataset
         self.schema_validator
+
         # Execute each cleaning step
         for step in self.pipeline_steps:
             try:
@@ -327,7 +329,7 @@ class DatasetCleaner:
                 raise
 
             except Exception as e:
-                self.logger.error('Unexpected error occurred with reason {e}')
+                self.logger.error('Fatal error occurred with reason {e}')
                 raise
         self.logger.info("Pipeline completed successfully")
         self.logger.info(f"Final row count: {len(self.df)}")

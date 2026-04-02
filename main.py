@@ -22,13 +22,17 @@ Notes:
 - Ensure the dataset exists at the specified file_path before execution
 - All dependent modules should be properly configured and imported
 """
+from pipeline.feature_engineering import FeatureEngineering
 from pipeline.ingest import DataIngestor
 import pandas as pd
 from pipeline.clean import DatasetCleaner
+from pipeline.ml.model import PriceModel
 from utils.exceptions import PipelineError
 from utils.timing import timeit
 from utils.logging import setup_logger
-pd.set_option('display.max_columns', None)
+
+from visualization.visualize import DataVisualzation
+
 
 file_path = 'ebay_merged_data.csv'
 connection_string = "postgresql://postgres:0009@localhost:5432/ds_db"
@@ -47,10 +51,22 @@ def run_pipeline(source_path: str):
         # Data cleaning and its metrics
         dc_results = DatasetCleaner(raw_df).run_pipeline()
 
+        # Visualization
+        # vc = DataVisualzation(dc_results)._plot_graph()
+
+        # Feature engineering
+        feature_eng = FeatureEngineering(dc_results)
+        feature_df = feature_eng.run_features_pipeline()
+
+        # Model training
+
+
+
         return {
             'raw_df': raw_df, 
             'metrics': metrics,
-            'cleaned_df': dc_results
+            'cleaned_df': dc_results,
+            'feature_df': feature_df
             }
     except PipelineError as e:
         logger.error(f'Error running pipeline with reason{e}')
@@ -62,8 +78,8 @@ def run_pipeline(source_path: str):
 if __name__ == '__main__':
     try:
         pipeline_results = run_pipeline(file_path)
-        print(pipeline_results['cleaned_df'].info())
-
-      
+        model = PriceModel(pipeline_results['feature_df']).train()
+        
+        
     except Exception as e:
         raise RuntimeError(f'Error Running Production Pipeline: {e}')
